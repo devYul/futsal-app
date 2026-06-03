@@ -48,11 +48,14 @@ export async function createEvent(formData: FormData) {
   const { data, error } = await supabase
     .from("events")
     .insert(rows)
-    .select("id")
-    .order("starts_at", { ascending: true });
+    .select("id, starts_at");
 
   if (error) throw new Error(error.message);
-  const firstId = data![0].id as string;
+  // 가장 빠른(첫 회차) 모임으로 이동하기 위해 시간순 정렬
+  const sorted = [...(data ?? [])].sort((a, b) =>
+    a.starts_at < b.starts_at ? -1 : 1
+  );
+  const firstId = sorted[0].id as string;
 
   // 전체 회원에게 새 모임 알림 (반복이면 회차 수 표기)
   await notifyAllMembers(
