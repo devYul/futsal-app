@@ -32,11 +32,7 @@ function LoginForm() {
     setMsg(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "kakao",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        // 닉네임만 요청 (이메일 동의항목은 비즈 검수가 필요해 제외)
-        scopes: "profile_nickname",
-      },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
     if (error) setMsg(translateError(error.message));
   }
