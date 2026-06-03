@@ -6,6 +6,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { balanceTeams, type Player } from "@/lib/teams";
 import { replayElo, type EloMatch } from "@/lib/elo";
+import { attendanceWindow } from "@/lib/format";
 import { sendPushToUsers } from "@/lib/push";
 import type { RsvpStatus } from "@/lib/types";
 
@@ -29,6 +30,12 @@ export async function createEvent(formData: FormData) {
   const capacity = capacityRaw ? Number(capacityRaw) : null;
   const seriesId = repeat > 1 ? randomUUID() : null;
 
+  // 참석 마감: 첫 회차 기준 (시작 - 마감) 간격을 구해 각 회차에 동일 간격으로 적용
+  const deadlineRaw = String(formData.get("rsvp_deadline") ?? "");
+  const deadlineOffsetMs = deadlineRaw
+    ? base.getTime() - new Date(deadlineRaw).getTime()
+    : null;
+
   // 매주 +7일씩 반복 일정 생성
   const rows = Array.from({ length: repeat }, (_, i) => {
     const d = new Date(base);
@@ -40,6 +47,10 @@ export async function createEvent(formData: FormData) {
       capacity,
       num_teams: numTeams,
       series_id: seriesId,
+      rsvp_deadline:
+        deadlineOffsetMs !== null
+          ? new Date(d.getTime() - deadlineOffsetMs).toISOString()
+          : null,
       created_by: profile.id,
     };
   });
@@ -76,6 +87,17 @@ export async function setRsvp(eventId: string, status: RsvpStatus) {
   if (!profile) throw new Error("로그인이 필요합니다.");
 
   const supabase = await createClient();
+
+  // 참석 마감 시각이 지났으면 변경 불가
+  const { data: ev } = await supabase
+    .from("events")
+    .select("rsvp_deadline")
+    .eq("id", eventId)
+    .single();
+  if (ev?.rsvp_deadline && Date.now() > new Date(ev.rsvp_deadline).getTime()) {
+    throw new Error("참석 응답이 마감되었습니다.");
+  }
+
   const { error } = await supabase.from("rsvps").upsert(
     {
       event_id: eventId,
@@ -91,26 +113,42 @@ export async function setRsvp(eventId: string, status: RsvpStatus) {
   revalidatePath("/");
 }
 
-// ── 당일 출석 체크인/취소 (토글) ───────────────────────────
-export async function toggleAttendance(eventId: string) {
+// ── 당일 출석 체크인 (취소 불가) ───────────────────────────
+//   가능 시간: 모임 시작 1시간 전 ~ 당일(KST) 종료.
+//   모임 시작 시각 이후 체크인은 '지각'으로 기록됩니다.
+export async function checkIn(eventId: string) {
   const profile = await getCurrentProfile();
   if (!profile) throw new Error("로그인이 필요합니다.");
 
   const supabase = await createClient();
+
+  const { data: event } = await supabase
+    .from("events")
+    .select("starts_at")
+    .eq("id", eventId)
+    .single();
+  if (!event) throw new Error("모임을 찾을 수 없습니다.");
+
+  // 이미 체크인했으면 그대로 둠 (취소 불가)
   const { data: existing } = await supabase
     .from("attendance")
     .select("id")
     .eq("event_id", eventId)
     .eq("user_id", profile.id)
     .maybeSingle();
+  if (existing) return;
 
-  if (existing) {
-    await supabase.from("attendance").delete().eq("id", existing.id);
-  } else {
-    await supabase
-      .from("attendance")
-      .insert({ event_id: eventId, user_id: profile.id });
-  }
+  const now = Date.now();
+  const startMs = new Date(event.starts_at).getTime();
+  const { openMs, closeMs } = attendanceWindow(event.starts_at);
+  if (now < openMs) throw new Error("아직 출석체크 시간이 아닙니다. (모임 시작 1시간 전부터 가능)");
+  if (now > closeMs) throw new Error("출석체크 가능 시간이 지났습니다.");
+
+  const isLate = now > startMs;
+  const { error } = await supabase
+    .from("attendance")
+    .insert({ event_id: eventId, user_id: profile.id, is_late: isLate });
+  if (error) throw new Error(error.message);
 
   revalidatePath(`/events/${eventId}`);
 }
@@ -188,11 +226,13 @@ export async function updateProfile(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const position = String(formData.get("position") ?? "") || null;
+  const genderRaw = String(formData.get("gender") ?? "");
+  const gender = genderRaw === "M" || genderRaw === "F" ? genderRaw : null;
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
-    .update({ name, phone: phone || null, position })
+    .update({ name, phone: phone || null, position, gender })
     .eq("id", profile.id);
   if (error) throw new Error(error.message);
 

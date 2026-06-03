@@ -1,5 +1,6 @@
 export type Role = "admin" | "member";
 export type Position = "GK" | "DF" | "MF" | "FW" | null;
+export type Gender = "M" | "F" | null;
 export type EventStatus = "upcoming" | "closed" | "done";
 export type RsvpStatus = "yes" | "no" | "maybe";
 
@@ -8,6 +9,7 @@ export interface Profile {
   name: string;
   phone: string | null;
   position: Position;
+  gender: Gender;
   skill_rating: number;
   elo_rating: number;
   role: Role;
@@ -24,6 +26,7 @@ export interface FutsalEvent {
   status: EventStatus;
   mvp_user_id: string | null;
   series_id: string | null;
+  rsvp_deadline: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -61,6 +64,7 @@ export interface Attendance {
   event_id: string;
   user_id: string;
   checked_in_at: string;
+  is_late: boolean;
 }
 
 export interface TeamAssignment {

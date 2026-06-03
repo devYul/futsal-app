@@ -45,19 +45,33 @@ export default async function ProfilePage() {
             placeholder="010-0000-0000"
           />
         </div>
-        <div>
-          <label className="label">주 포지션</label>
-          <select
-            name="position"
-            className="input"
-            defaultValue={profile.position ?? ""}
-          >
-            {POSITIONS.map((p) => (
-              <option key={p || "none"} value={p}>
-                {p || "선택 안함"}
-              </option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">주 포지션</label>
+            <select
+              name="position"
+              className="input"
+              defaultValue={profile.position ?? ""}
+            >
+              {POSITIONS.map((p) => (
+                <option key={p || "none"} value={p}>
+                  {p || "선택 안함"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">성별</label>
+            <select
+              name="gender"
+              className="input"
+              defaultValue={profile.gender ?? ""}
+            >
+              <option value="">선택 안함</option>
+              <option value="M">남성</option>
+              <option value="F">여성</option>
+            </select>
+          </div>
         </div>
         <div>
           <label className="label">내 실력 점수 (운영진이 설정)</label>

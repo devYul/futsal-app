@@ -71,6 +71,18 @@ export default async function NewEventPage() {
           </div>
         </div>
         <div>
+          <label className="label">참석 응답 마감 (선택)</label>
+          <input
+            name="rsvp_deadline"
+            type="datetime-local"
+            className="input"
+          />
+          <p className="text-xs text-muted mt-1">
+            비워두면 마감 없음. 이 시각 이후엔 참석/불참을 변경할 수 없습니다.
+            (반복 모임은 각 회차에 같은 간격으로 적용)
+          </p>
+        </div>
+        <div>
           <label className="label">정기 반복 (매주 같은 요일·시간)</label>
           <select name="repeat" className="input" defaultValue={1}>
             <option value={1}>반복 안함 (1회)</option>

@@ -15,6 +15,7 @@ create table if not exists public.profiles (
   name         text not null default '',
   phone        text,
   position     text check (position in ('GK','DF','MF','FW') or position is null),
+  gender       text check (gender in ('M','F') or gender is null),  -- 성별 (선택)
   skill_rating numeric(3,1) not null default 3.0 check (skill_rating between 1.0 and 5.0),
   elo_rating   numeric(6,1) not null default 1000,   -- 경기 결과 기반 자동 레이팅 (Elo)
   role         text not null default 'member' check (role in ('admin','member')),
@@ -22,6 +23,7 @@ create table if not exists public.profiles (
 );
 -- 기존 DB 업그레이드용 (재실행해도 안전)
 alter table public.profiles add column if not exists elo_rating numeric(6,1) not null default 1000;
+alter table public.profiles add column if not exists gender text check (gender in ('M','F') or gender is null);
 
 -- ── 2. 모임(이벤트) ────────────────────────────────────────
 create table if not exists public.events (
@@ -34,12 +36,14 @@ create table if not exists public.events (
   status        text not null default 'upcoming' check (status in ('upcoming','closed','done')),
   mvp_user_id   uuid references public.profiles(id) on delete set null,  -- 당일 MVP
   series_id     uuid,                        -- 정기(반복) 모임 묶음 식별자
+  rsvp_deadline timestamptz,                 -- 참석 응답 마감 일시 (null = 마감 없음)
   created_by    uuid references public.profiles(id) on delete set null,
   created_at    timestamptz not null default now()
 );
 -- 기존 DB 업그레이드용 (재실행해도 안전)
 alter table public.events add column if not exists mvp_user_id uuid references public.profiles(id) on delete set null;
 alter table public.events add column if not exists series_id uuid;
+alter table public.events add column if not exists rsvp_deadline timestamptz;
 
 -- ── 3. 참석 응답 (모임 전 RSVP) ────────────────────────────
 create table if not exists public.rsvps (
@@ -57,8 +61,11 @@ create table if not exists public.attendance (
   event_id      uuid not null references public.events(id) on delete cascade,
   user_id       uuid not null references public.profiles(id) on delete cascade,
   checked_in_at timestamptz not null default now(),
+  is_late       boolean not null default false,   -- 모임 시작 시각 이후 체크인이면 지각
   unique (event_id, user_id)
 );
+-- 기존 DB 업그레이드용 (재실행해도 안전)
+alter table public.attendance add column if not exists is_late boolean not null default false;
 
 -- ── 5. 팀 배분 결과 ────────────────────────────────────────
 create table if not exists public.team_assignments (

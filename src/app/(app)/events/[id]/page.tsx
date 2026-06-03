@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, attendanceState, isRsvpLocked } from "@/lib/format";
 import RsvpButtons from "@/components/RsvpButtons";
 import AttendanceButton from "@/components/AttendanceButton";
 import GenerateTeamsButton from "@/components/GenerateTeamsButton";
@@ -40,7 +40,7 @@ export default async function EventDetailPage(props: PageProps<"/events/[id]">) 
         .order("updated_at", { ascending: true }),
       supabase
         .from("attendance")
-        .select("user_id, profiles(name, position)")
+        .select("user_id, is_late, profiles(name, position)")
         .eq("event_id", id),
       supabase
         .from("team_assignments")
@@ -58,11 +58,22 @@ export default async function EventDetailPage(props: PageProps<"/events/[id]">) 
   const rsvps = (rsvpRows ?? []) as unknown as (NamedRow & {
     status: RsvpStatus;
   })[];
-  const attendance = (attRows ?? []) as unknown as NamedRow[];
+  const attendance = (attRows ?? []) as unknown as (NamedRow & {
+    is_late: boolean;
+  })[];
   const matches = (matchRows ?? []) as Match[];
 
   const myRsvp = rsvps.find((r) => r.user_id === profile?.id)?.status ?? null;
-  const iAmCheckedIn = attendance.some((a) => a.user_id === profile?.id);
+  const myAtt = attendance.find((a) => a.user_id === profile?.id);
+  const iAmCheckedIn = !!myAtt;
+  const iAmLate = myAtt?.is_late ?? false;
+  const lateCount = attendance.filter((a) => a.is_late).length;
+
+  // 출석체크 가능 시간대 / 참석 응답 마감 여부
+  const { canCheckIn, windowMsg: attnWindowMsg } = attendanceState(
+    event.starts_at
+  );
+  const rsvpLocked = isRsvpLocked(event.rsvp_deadline);
 
   // 참석(yes) 은 응답 시각 오름차순 → 정원까지 "확정", 초과분은 "대기자"
   const yes = rsvps.filter((r) => r.status === "yes");
@@ -128,6 +139,12 @@ export default async function EventDetailPage(props: PageProps<"/events/[id]">) 
           {waitlist.length > 0 ? ` · 대기 ${waitlist.length}명` : ""} ·{" "}
           {event.num_teams}팀
         </p>
+        {event.rsvp_deadline && (
+          <p className={`text-sm ${rsvpLocked ? "text-muted" : ""}`}>
+            ⏰ 참석 마감 {formatDateTime(event.rsvp_deadline)}
+            {rsvpLocked ? " (마감됨)" : ""}
+          </p>
+        )}
         {event.mvp_user_id && (
           <p className="text-sm">
             🏅 MVP <b>{nameById.get(event.mvp_user_id) ?? "?"}</b>
@@ -138,7 +155,7 @@ export default async function EventDetailPage(props: PageProps<"/events/[id]">) 
       {/* 참석 응답 */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-muted">참석 여부</h2>
-        <RsvpButtons eventId={event.id} current={myRsvp} />
+        <RsvpButtons eventId={event.id} current={myRsvp} locked={rsvpLocked} />
         {cap && waitlist.some((r) => r.user_id === profile?.id) && (
           <p className="text-xs text-amber-400">
             정원이 가득 차 대기자 명단에 등록되었습니다. 빈자리가 나면 자동으로
@@ -151,16 +168,28 @@ export default async function EventDetailPage(props: PageProps<"/events/[id]">) 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-muted">
           출석 체크 · {attendance.length}명 출석
+          {lateCount > 0 ? ` (지각 ${lateCount})` : ""}
         </h2>
-        <AttendanceButton eventId={event.id} checkedIn={iAmCheckedIn} />
+        <AttendanceButton
+          eventId={event.id}
+          checkedIn={iAmCheckedIn}
+          isLate={iAmLate}
+          canCheckIn={canCheckIn}
+          windowMsg={attnWindowMsg}
+        />
         {attendance.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {attendance.map((a) => (
               <span
                 key={a.user_id}
-                className="text-xs bg-surface-2 border border-border rounded-full px-3 py-1"
+                className={`text-xs rounded-full px-3 py-1 border ${
+                  a.is_late
+                    ? "border-amber-500/50 text-amber-400"
+                    : "bg-surface-2 border-border"
+                }`}
               >
                 {a.profiles?.name}
+                {a.is_late ? " 🕒지각" : ""}
               </span>
             ))}
           </div>
