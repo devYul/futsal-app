@@ -70,6 +70,15 @@ export default async function NewEventPage() {
             </select>
           </div>
         </div>
+        <div>
+          <label className="label">정기 반복 (매주 같은 요일·시간)</label>
+          <select name="repeat" className="input" defaultValue={1}>
+            <option value={1}>반복 안함 (1회)</option>
+            <option value={4}>매주 · 4회</option>
+            <option value={8}>매주 · 8회</option>
+            <option value={12}>매주 · 12회</option>
+          </select>
+        </div>
 
         <button className="btn btn-primary w-full">모임 등록</button>
       </form>

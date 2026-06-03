@@ -12,10 +12,11 @@ export default async function MembersPage() {
   const { data } = await supabase
     .from("profiles")
     .select("*")
-    .order("skill_rating", { ascending: false });
+    .order("elo_rating", { ascending: false });
 
   const members = (data ?? []) as Profile[];
   const isAdmin = profile?.role === "admin";
+  const medal = ["🥇", "🥈", "🥉"];
 
   return (
     <div className="px-4 pt-6">
@@ -23,8 +24,8 @@ export default async function MembersPage() {
         <h1 className="text-xl font-bold">멤버 ({members.length})</h1>
         <p className="text-muted text-sm mt-0.5">
           {isAdmin
-            ? "실력 점수는 팀 배분에 사용됩니다. 탭하여 조정하세요."
-            : "동호회 멤버 목록"}
+            ? "ELO 레이팅 순위입니다. 실력 점수는 팀 배분 기준이며 탭하여 조정하세요."
+            : "경기 결과로 매겨지는 ELO 레이팅 순위"}
         </p>
       </header>
 
@@ -37,21 +38,26 @@ export default async function MembersPage() {
                 name={m.name}
                 rating={Number(m.skill_rating)}
                 position={m.position}
+                elo={Number(m.elo_rating)}
               />
             ))
-          : members.map((m) => (
+          : members.map((m, i) => (
               <div
                 key={m.id}
                 className="card p-4 flex justify-between items-center"
               >
                 <span className="font-semibold">
+                  <span className="text-muted text-sm mr-1.5">
+                    {medal[i] ?? `${i + 1}`}
+                  </span>
                   {m.name}
                   {m.position && (
                     <span className="text-muted text-xs ml-2">{m.position}</span>
                   )}
                 </span>
-                <span className="text-sm text-muted">
-                  {"⭐".repeat(Math.round(Number(m.skill_rating)))}
+                <span className="text-sm">
+                  <span className="font-bold">{Math.round(Number(m.elo_rating))}</span>
+                  <span className="text-muted text-xs ml-1">ELO</span>
                 </span>
               </div>
             ))}

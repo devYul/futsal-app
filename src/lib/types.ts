@@ -9,6 +9,7 @@ export interface Profile {
   phone: string | null;
   position: Position;
   skill_rating: number;
+  elo_rating: number;
   role: Role;
   created_at: string;
 }
@@ -21,8 +22,30 @@ export interface FutsalEvent {
   capacity: number | null;
   num_teams: number;
   status: EventStatus;
+  mvp_user_id: string | null;
+  series_id: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+export interface Match {
+  id: string;
+  event_id: string;
+  team_a: number;
+  team_b: number;
+  score_a: number;
+  score_b: number;
+  created_at: string;
+}
+
+export interface Dues {
+  id: string;
+  user_id: string;
+  period: string; // 'YYYY-MM'
+  amount: number;
+  paid: boolean;
+  paid_at: string | null;
+  note: string | null;
 }
 
 export interface Rsvp {

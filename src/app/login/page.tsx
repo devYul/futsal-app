@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -13,7 +22,20 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(
+    searchParams.get("error") === "oauth"
+      ? "카카오 로그인에 실패했습니다. 다시 시도해주세요."
+      : null
+  );
+
+  async function handleKakao() {
+    setMsg(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "kakao",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) setMsg(translateError(error.message));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,6 +126,21 @@ export default function LoginPage() {
           {loading ? "처리 중..." : mode === "signin" ? "로그인" : "회원가입"}
         </button>
       </form>
+
+      <div className="flex items-center gap-3 my-5">
+        <div className="h-px bg-border flex-1" />
+        <span className="text-xs text-muted">또는</span>
+        <div className="h-px bg-border flex-1" />
+      </div>
+
+      <button
+        type="button"
+        onClick={handleKakao}
+        className="btn w-full"
+        style={{ background: "#FEE500", color: "#191600" }}
+      >
+        <span className="text-lg">💬</span> 카카오로 시작하기
+      </button>
 
       <button
         className="text-sm text-muted mt-5 mx-auto hover:text-foreground"

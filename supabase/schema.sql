@@ -16,22 +16,30 @@ create table if not exists public.profiles (
   phone        text,
   position     text check (position in ('GK','DF','MF','FW') or position is null),
   skill_rating numeric(3,1) not null default 3.0 check (skill_rating between 1.0 and 5.0),
+  elo_rating   numeric(6,1) not null default 1000,   -- 경기 결과 기반 자동 레이팅 (Elo)
   role         text not null default 'member' check (role in ('admin','member')),
   created_at   timestamptz not null default now()
 );
+-- 기존 DB 업그레이드용 (재실행해도 안전)
+alter table public.profiles add column if not exists elo_rating numeric(6,1) not null default 1000;
 
 -- ── 2. 모임(이벤트) ────────────────────────────────────────
 create table if not exists public.events (
-  id          uuid primary key default gen_random_uuid(),
-  title       text not null,
-  location    text,
-  starts_at   timestamptz not null,
-  capacity    int,                         -- 정원 (null = 무제한)
-  num_teams   int not null default 2 check (num_teams between 2 and 6),
-  status      text not null default 'upcoming' check (status in ('upcoming','closed','done')),
-  created_by  uuid references public.profiles(id) on delete set null,
-  created_at  timestamptz not null default now()
+  id            uuid primary key default gen_random_uuid(),
+  title         text not null,
+  location      text,
+  starts_at     timestamptz not null,
+  capacity      int,                         -- 정원 (null = 무제한). 초과 응답자는 대기자 명단으로.
+  num_teams     int not null default 2 check (num_teams between 2 and 6),
+  status        text not null default 'upcoming' check (status in ('upcoming','closed','done')),
+  mvp_user_id   uuid references public.profiles(id) on delete set null,  -- 당일 MVP
+  series_id     uuid,                        -- 정기(반복) 모임 묶음 식별자
+  created_by    uuid references public.profiles(id) on delete set null,
+  created_at    timestamptz not null default now()
 );
+-- 기존 DB 업그레이드용 (재실행해도 안전)
+alter table public.events add column if not exists mvp_user_id uuid references public.profiles(id) on delete set null;
+alter table public.events add column if not exists series_id uuid;
 
 -- ── 3. 참석 응답 (모임 전 RSVP) ────────────────────────────
 create table if not exists public.rsvps (
@@ -71,6 +79,32 @@ create table if not exists public.push_subscriptions (
   created_at timestamptz not null default now()
 );
 
+-- ── 7. 경기 결과 (한 모임 안에서 팀끼리 치른 경기들) ────────
+--   team_a / team_b 는 team_assignments 의 team_no 를 가리킵니다.
+--   결과는 Elo 레이팅 자동 계산의 입력으로 쓰입니다.
+create table if not exists public.matches (
+  id         uuid primary key default gen_random_uuid(),
+  event_id   uuid not null references public.events(id) on delete cascade,
+  team_a     int not null,
+  team_b     int not null,
+  score_a    int not null default 0 check (score_a >= 0),
+  score_b    int not null default 0 check (score_b >= 0),
+  created_at timestamptz not null default now()
+);
+
+-- ── 8. 회비 (월별 납부 관리) ───────────────────────────────
+--   period: 'YYYY-MM'. 운영진이 월별로 생성하고 납부 여부를 관리합니다.
+create table if not exists public.dues (
+  id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null references public.profiles(id) on delete cascade,
+  period    text not null,                 -- 'YYYY-MM'
+  amount    int  not null default 0,
+  paid      boolean not null default false,
+  paid_at   timestamptz,
+  note      text,
+  unique (user_id, period)
+);
+
 -- ============================================================
 --  헬퍼: 현재 사용자가 admin 인지
 -- ============================================================
@@ -96,8 +130,18 @@ security definer
 set search_path = public
 as $$
 begin
+  -- 이메일 가입은 메타데이터 name, 카카오 로그인은 name/full_name/nickname 을 사용.
   insert into public.profiles (id, name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)))
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data->>'name', ''),
+      nullif(new.raw_user_meta_data->>'full_name', ''),
+      nullif(new.raw_user_meta_data->>'nickname', ''),
+      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+      '회원'
+    )
+  )
   on conflict (id) do nothing;
   return new;
 end;
@@ -117,6 +161,8 @@ alter table public.rsvps               enable row level security;
 alter table public.attendance          enable row level security;
 alter table public.team_assignments    enable row level security;
 alter table public.push_subscriptions  enable row level security;
+alter table public.matches              enable row level security;
+alter table public.dues                 enable row level security;
 
 -- 프로필: 로그인 회원은 모두 조회 가능 / 본인 정보 수정 / admin 은 전체 수정(실력점수·role)
 drop policy if exists profiles_select on public.profiles;
@@ -172,6 +218,24 @@ create policy team_admin_write on public.team_assignments
 drop policy if exists push_self on public.push_subscriptions;
 create policy push_self on public.push_subscriptions
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 경기 결과: 회원 조회 / admin 만 작성·수정·삭제
+drop policy if exists matches_select on public.matches;
+create policy matches_select on public.matches
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists matches_admin_write on public.matches;
+create policy matches_admin_write on public.matches
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- 회비: 회원은 조회 가능(투명 공개) / admin 만 작성·수정
+drop policy if exists dues_select on public.dues;
+create policy dues_select on public.dues
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists dues_admin_write on public.dues;
+create policy dues_admin_write on public.dues
+  for all using (public.is_admin()) with check (public.is_admin());
 
 -- ============================================================
 --  최초 관리자 지정 (가입 후 이메일로 본인을 admin 으로)

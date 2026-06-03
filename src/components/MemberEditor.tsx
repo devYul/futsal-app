@@ -10,11 +10,13 @@ export default function MemberEditor({
   name,
   rating,
   position,
+  elo,
 }: {
   userId: string;
   name: string;
   rating: number;
   position: string | null;
+  elo: number;
 }) {
   const [r, setR] = useState(rating);
   const [pos, setPos] = useState(position ?? "");
@@ -33,7 +35,10 @@ export default function MemberEditor({
   return (
     <div className="card p-4">
       <div className="flex justify-between items-center mb-3">
-        <span className="font-semibold">{name}</span>
+        <span className="font-semibold">
+          {name}
+          <span className="text-muted text-xs ml-2">ELO {Math.round(elo)}</span>
+        </span>
         {saved && <span className="text-xs text-primary">저장됨 ✓</span>}
       </div>
 

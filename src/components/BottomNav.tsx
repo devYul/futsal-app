@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 const items = [
   { href: "/", label: "홈", icon: "🏠" },
   { href: "/members", label: "멤버", icon: "👥" },
+  { href: "/dues", label: "회비", icon: "💰" },
   { href: "/profile", label: "내정보", icon: "⚙️" },
 ];
 
@@ -28,7 +29,7 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 inset-x-0 border-t border-border bg-surface/95 backdrop-blur z-40">
-      <div className="max-w-md mx-auto grid grid-cols-4">
+      <div className="max-w-md mx-auto grid grid-cols-5">
         {items.map((it) => (
           <Link
             key={it.href}
